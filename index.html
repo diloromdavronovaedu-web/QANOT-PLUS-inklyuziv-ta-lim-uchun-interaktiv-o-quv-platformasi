@@ -445,4 +445,114 @@ function loadCompetitionDemo(){
   if(hint) hint.textContent='🏆 Tanlov demo profili faol: Namuna o‘quvchi · 5-sinf. “Informatika — Kompyuter qurilmalari” darsini ochib, sodda matn, ovozli o‘qish va testni namoyish qiling.';
 }
 
-</script></body></html>
+</script>
+<style>
+#qanot-ai-launch{position:fixed;right:24px;bottom:24px;z-index:99990;border:0;border-radius:999px;padding:14px 20px;background:linear-gradient(135deg,#7044f5,#4b36c9);color:#fff;font:700 15px system-ui;box-shadow:0 8px 28px #4430a955;cursor:pointer}
+#qanot-ai-launch:hover{transform:translateY(-2px)}
+#qanot-ai-panel{position:fixed;right:24px;bottom:88px;width:min(390px,calc(100vw - 28px));height:min(590px,calc(100vh - 120px));z-index:99991;background:#fff;border:1px solid #ded8ff;border-radius:22px;box-shadow:0 18px 60px #27205a35;display:none;overflow:hidden;font-family:system-ui,sans-serif;color:#17134a}
+#qanot-ai-panel.open{display:flex;flex-direction:column}
+#qanot-ai-head{padding:16px 18px;background:linear-gradient(120deg,#633ce5,#3f55d9);color:#fff;display:flex;align-items:center;justify-content:space-between}
+#qanot-ai-head strong{font-size:17px}
+#qanot-ai-head small{display:block;opacity:.88;margin-top:3px}
+#qanot-ai-close{border:0;background:#ffffff24;color:#fff;border-radius:10px;padding:7px 11px;font-size:20px;cursor:pointer}
+#qanot-ai-settings{padding:10px 14px;border-bottom:1px solid #eeeafc;display:flex;align-items:center;gap:8px;font-size:13px}
+#qanot-ai-grade{border:1px solid #d9d2fb;border-radius:9px;padding:7px;background:#fff;color:#21195f}
+#qanot-ai-messages{flex:1;overflow:auto;padding:14px;background:linear-gradient(180deg,#faf9ff,#f4f6ff)}
+.qai-msg{max-width:88%;padding:11px 13px;border-radius:15px;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.5}
+.qai-bot{background:#fff;border:1px solid #e7e2fb;border-bottom-left-radius:5px;margin-right:auto}
+.qai-user{background:#6544e9;color:#fff;border-bottom-right-radius:5px;margin-left:auto}
+#qanot-ai-status{font-size:12px;color:#766f98;padding:0 14px 7px;min-height:18px}
+#qanot-ai-form{display:flex;gap:8px;padding:11px;border-top:1px solid #eeeafc;background:#fff}
+#qanot-ai-input{min-width:0;flex:1;border:1px solid #d9d2f5;border-radius:12px;padding:11px 12px;font:14px system-ui;outline:none}
+#qanot-ai-input:focus{border-color:#7652ee;box-shadow:0 0 0 3px #7652ee20}
+#qanot-ai-send{border:0;border-radius:12px;background:#6544e9;color:#fff;font-weight:700;padding:0 16px;cursor:pointer}
+#qanot-ai-send:disabled{opacity:.55;cursor:wait}
+@media(max-width:520px){#qanot-ai-launch{right:14px;bottom:14px;padding:12px 16px}#qanot-ai-panel{right:10px;bottom:72px;width:calc(100vw - 20px);height:min(620px,calc(100vh - 90px))}}
+</style>
+
+<button id="qanot-ai-launch" type="button" aria-label="QANOT AI yordamchisini ochish">🤖 QANOT AI</button>
+<section id="qanot-ai-panel" role="dialog" aria-label="QANOT AI yordamchi oynasi" aria-modal="false">
+  <header id="qanot-ai-head">
+    <div><strong>🤖 QANOT AI</strong><small>Har bir o‘quvchi uchun mehribon yordamchi</small></div>
+    <button id="qanot-ai-close" type="button" aria-label="Yopish">×</button>
+  </header>
+  <div id="qanot-ai-settings">
+    <label for="qanot-ai-grade">Sinfingiz:</label>
+    <select id="qanot-ai-grade">
+      <option value="1">1-sinf</option><option value="2">2-sinf</option><option value="3">3-sinf</option>
+      <option value="4">4-sinf</option><option value="5" selected>5-sinf</option><option value="6">6-sinf</option>
+      <option value="7">7-sinf</option><option value="8">8-sinf</option><option value="9">9-sinf</option>
+    </select>
+    <span>O‘zbek tilida</span>
+  </div>
+  <div id="qanot-ai-messages" aria-live="polite">
+    <div class="qai-msg qai-bot">Assalomu alaykum! Men QANOT AI yordamchisiman. 😊
+Menga savolingizni yozing. Mavzuni sodda qilib tushuntiraman, misol va mashqlar bilan yordam beraman.</div>
+  </div>
+  <div id="qanot-ai-status"></div>
+  <form id="qanot-ai-form">
+    <input id="qanot-ai-input" type="text" maxlength="3000" placeholder="Savolingizni yozing..." autocomplete="off" required>
+    <button id="qanot-ai-send" type="submit">Yuborish</button>
+  </form>
+</section>
+<script>
+(function(){
+  const API_URL = "https://qanotplus-ai-2026.onrender.com/api/chat";
+  const launch=document.getElementById("qanot-ai-launch");
+  const panel=document.getElementById("qanot-ai-panel");
+  const close=document.getElementById("qanot-ai-close");
+  const form=document.getElementById("qanot-ai-form");
+  const input=document.getElementById("qanot-ai-input");
+  const messages=document.getElementById("qanot-ai-messages");
+  const status=document.getElementById("qanot-ai-status");
+  const send=document.getElementById("qanot-ai-send");
+  const grade=document.getElementById("qanot-ai-grade");
+
+  function addMessage(text,who){
+    const node=document.createElement("div");
+    node.className="qai-msg "+(who==="user"?"qai-user":"qai-bot");
+    node.textContent=text;
+    messages.appendChild(node);
+    messages.scrollTop=messages.scrollHeight;
+  }
+  function toggle(open){
+    panel.classList.toggle("open",open);
+    launch.setAttribute("aria-expanded",String(open));
+    if(open) input.focus();
+  }
+  launch.addEventListener("click",()=>toggle(!panel.classList.contains("open")));
+  close.addEventListener("click",()=>toggle(false));
+
+  form.addEventListener("submit",async function(event){
+    event.preventDefault();
+    const message=input.value.trim();
+    if(!message)return;
+    addMessage(message,"user");
+    input.value="";
+    send.disabled=true;
+    status.textContent="QANOT AI javob tayyorlamoqda...";
+    try{
+      const response=await fetch(API_URL,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({message:message,grade:Number(grade.value),role:"student"})
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok || data.success===false){
+        throw new Error(data.error || "Server javob qaytarmadi. Birozdan keyin qayta urinib ko‘ring.");
+      }
+      if(!data.answer) throw new Error("AI javobi bo‘sh qaytdi. Keyinroq qayta urinib ko‘ring.");
+      addMessage(data.answer,"bot");
+      status.textContent="";
+    }catch(error){
+      addMessage("Kechirasiz, hozir javob olishda muammo yuz berdi.\n"+(error.message||"Internet aloqasini tekshirib, qayta urinib ko‘ring."),"bot");
+      status.textContent="Ulanishda xatolik";
+    }finally{
+      send.disabled=false;
+      input.focus();
+    }
+  });
+})();
+</script>
+
+</body></html>

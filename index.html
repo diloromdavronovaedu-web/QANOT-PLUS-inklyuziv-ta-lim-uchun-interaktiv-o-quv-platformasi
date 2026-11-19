@@ -304,7 +304,18 @@ function readStudentProgress(){try{return JSON.parse(localStorage.getItem('qanot
 function persistStudentProgress(){localStorage.setItem('qanotStudentProgress',JSON.stringify(studentProgress));updateStudentStats()}
 function saveStudentProfile(){let name=document.getElementById('studentName').value.trim();let grade=Number(document.getElementById('learnerGrade').value);studentProfile={name,grade};localStorage.setItem('qanotStudentProfile',JSON.stringify(studentProfile));selectedGrade=grade;document.getElementById('studentGreeting').textContent=name?('Xush kelibsiz, '+name+'!'):'Xush kelibsiz, aziz o‘quvchi!';document.getElementById('studentProfileMsg').textContent='Profil saqlandi. '+grade+'-sinf darslari ko‘rsatilmoqda.';renderLesson();}
 function initStudentProfile(){document.getElementById('studentName').value=studentProfile.name||'';document.getElementById('learnerGrade').value=String(studentProfile.grade||5);selectedGrade=Number(studentProfile.grade||5);document.getElementById('studentGreeting').textContent=studentProfile.name?('Xush kelibsiz, '+studentProfile.name+'!'):'Xush kelibsiz, aziz o‘quvchi!';}
-function updateStudentStats(){let lessons=data.filter(x=>Number(x.grade||5)===selectedGrade);let done=studentProgress.done.filter(id=>lessons.some(x=>x.id===id)).length;let scores=studentProgress.scores.filter(x=>lessons.some(l=>l.id===x.lessonId));let avg=scores.length?Math.round(scores.reduce((a,x)=>a+x.percent,0)/scores.length)+'%':'—';document.getElementById('statLessons').textContent=lessons.length;document.getElementById('statDone').textContent=done;document.getElementById('statScores').textContent=scores.length;document.getElementById('statAverage').textContent=avg;}
+function updateStudentStats(){
+ let lessons=data.filter(x=>Number(x.grade||5)===selectedGrade);
+ let lessonIds=new Set(lessons.map(x=>x.id));
+ let done=studentProgress.done.filter(id=>lessonIds.has(id)).length;
+ let scores=studentProgress.scores.filter(x=>lessonIds.has(x.lessonId));
+ let percents=scores.map(x=>Number.isFinite(Number(x.percent))?Number(x.percent):(Number(x.total)>0?Math.round(Number(x.score||0)/Number(x.total)*100):0));
+ let avg=percents.length?Math.round(percents.reduce((a,x)=>a+x,0)/percents.length)+'%':'—';
+ document.getElementById('statLessons').textContent=lessons.length;
+ document.getElementById('statDone').textContent=done;
+ document.getElementById('statScores').textContent=scores.length;
+ document.getElementById('statAverage').textContent=avg;
+}
 function setLessonFilter(f){studentFilter=f;['all','saved','done'].forEach(k=>{let b=document.getElementById('filter'+k[0].toUpperCase()+k.slice(1));if(b)b.classList.toggle('active',k===f)});renderLessonList()}
 function renderLessonList(){let list=document.getElementById('lessonList');if(!list)return;list.innerHTML='';let items=data.filter(x=>Number(x.grade||5)===selectedGrade);let q=(document.getElementById('lessonSearch')?.value||'').toLocaleLowerCase('uz');let sub=document.getElementById('lessonSubjectFilter')?.value||'';if(q)items=items.filter(x=>(x.title+' '+x.subject).toLocaleLowerCase('uz').includes(q));if(sub)items=items.filter(x=>x.subject===sub);if(studentFilter==='saved')items=items.filter(x=>studentProgress.saved.includes(x.id));if(studentFilter==='done')items=items.filter(x=>studentProgress.done.includes(x.id));let sort=document.getElementById('lessonSort')?.value||'default';if(sort==='az')items.sort((a,b)=>a.title.localeCompare(b.title,'uz'));if(sort==='subject')items.sort((a,b)=>(a.subject||'').localeCompare(b.subject||'','uz'));if(!items.length){let e=document.createElement('div');e.className='empty-books';e.textContent=studentFilter==='saved'?'Hali saqlangan dars yo‘q.':'Bu tanlov bo‘yicha dars topilmadi.';list.append(e);return}items.forEach(x=>{let b=document.createElement('button');b.className='lessonbtn'+(current&&x.id===current.id?' sel':'');b.textContent=(studentProgress.done.includes(x.id)?'✅ ':'📘 ')+(x.subject?x.subject+' — ':'')+x.title;b.onclick=()=>{current=x;step=0;renderLesson()};list.append(b)})}
 function refreshSubjectFilter(){let sel=document.getElementById('lessonSubjectFilter');if(!sel)return;let keep=sel.value;sel.innerHTML='<option value="">Barcha fanlar</option>';[...new Set(data.filter(x=>Number(x.grade||5)===selectedGrade).map(x=>x.subject).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'uz')).forEach(x=>{let o=document.createElement('option');o.value=x;o.textContent=x;sel.append(o)});sel.value=keep}
@@ -315,7 +326,27 @@ function showStudentProgress(){let p=document.getElementById('studentProgressPan
 function escapeHtml(t){return String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 let data=readData(),current=data[0],mode="easy",step=0,font=18;
-function readData(){try{let saved=JSON.parse(localStorage.getItem("qanotPlusLessons"));if(!saved||!saved.length)return samples;if(saved.length===1&&saved[0].id==="sample"){localStorage.setItem("qanotPlusLessons",JSON.stringify(samples));return samples}return saved}catch(e){return samples}}
+function lessonKey(x){return [Number(x.grade||5),String(x.subject||'').trim().toLocaleLowerCase('uz'),String(x.title||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('uz')].join('|')}
+function normalizeLessons(items){
+ const unique=[],byKey=new Map(),idMap=new Map();
+ items.forEach(item=>{
+  if(!item||!item.title)return;
+  const key=lessonKey(item),existing=byKey.get(key);
+  if(!existing){byKey.set(key,item);unique.push(item);return;}
+  idMap.set(item.id,existing.id);
+  // Keep one lesson identity, but retain the most complete lesson content.
+  ['text','easy'].forEach(k=>{if(String(item[k]||'').length>String(existing[k]||'').length)existing[k]=item[k]});
+  if((item.steps||[]).length>(existing.steps||[]).length)existing.steps=item.steps;
+  if((item.questions||[]).length>(existing.questions||[]).length)existing.questions=item.questions;
+ });
+ if(idMap.size){
+  ['done','saved'].forEach(k=>{studentProgress[k]=[...new Set((studentProgress[k]||[]).map(id=>idMap.get(id)||id))]});
+  studentProgress.scores=(studentProgress.scores||[]).map(x=>({...x,lessonId:idMap.get(x.lessonId)||x.lessonId}));
+  localStorage.setItem('qanotStudentProgress',JSON.stringify(studentProgress));
+ }
+ return unique;
+}
+function readData(){try{let saved=JSON.parse(localStorage.getItem("qanotPlusLessons"));if(!saved||!saved.length)return samples;if(saved.length===1&&saved[0].id==="sample"){localStorage.setItem("qanotPlusLessons",JSON.stringify(samples));return samples}let clean=normalizeLessons(saved);if(clean.length!==saved.length)localStorage.setItem('qanotPlusLessons',JSON.stringify(clean));return clean}catch(e){return samples}}
 function store(){localStorage.setItem("qanotPlusLessons",JSON.stringify(data))}
 function go(id){document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===id));document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("active",x.dataset.view===id));if(id==="learner"){initStudentProfile();renderLesson();}if(id==="teacher")renderSaved()}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>go(b.dataset.view));
@@ -367,7 +398,33 @@ function stopVoice(){
 }
 function renderQuiz(){let q=document.getElementById("quiz");q.innerHTML="";(current.questions||[]).forEach((x,i)=>{let box=document.createElement("div");box.className="q";let p=document.createElement("b");p.textContent=(i+1)+". "+x.q;box.append(p);x.opts.forEach((o,j)=>{let l=document.createElement("label");let r=document.createElement("input");r.type="radio";r.name="q"+i;r.value=j;l.append(r,document.createTextNode(" "+o));box.append(l)});q.append(box)});document.getElementById("score").innerHTML=""}
 function grade(){let qs=current.questions||[],s=0;qs.forEach((x,i)=>{let a=document.querySelector(`input[name="q${i}"]:checked`);if(a&&Number(a.value)===x.correct)s++});let out=document.getElementById("score");out.className="status";out.textContent=`Natija: ${s}/${qs.length}. ${s===qs.length?"Ajoyib! Barcha javoblar to‘g‘ri.":"Mavzuni yana bir bor ko‘rib chiqib, qayta urinib ko‘ring."}`;if(qs.length){studentProgress.scores.push({lessonId:current.id,title:current.title,score:s,total:qs.length,percent:Math.round(s/qs.length*100),at:new Date().toISOString()});if(studentProgress.scores.length>100)studentProgress.scores=studentProgress.scores.slice(-100);persistStudentProgress();}}
-function addLesson(){selectedGrade=Number(document.getElementById("tGrade").value);document.getElementById("homeGrade").value=selectedGrade;document.getElementById("learnerGrade").value=selectedGrade;let title=document.getElementById("tTitle").value.trim(),text=document.getElementById("tText").value.trim();if(!title||!text){document.getElementById("teacherMsg").textContent="Mavzu va matnni kiriting.";return}let steps=document.getElementById("tSteps").value.split("\n").map(x=>x.trim()).filter(Boolean);let l={id:"d"+Date.now(),grade:Number(document.getElementById("tGrade").value),subject:document.getElementById("tSubject").value,title,text,easy:document.getElementById("tEasy").value.trim()||text,steps,questions:[]};data.push(l);store();current=l;document.getElementById("teacherMsg").className="status";document.getElementById("teacherMsg").textContent="Dars saqlandi. O‘quvchi kabinetida ko‘rish mumkin.";renderSaved();renderHomeBooks()}
+function addLesson(){
+ const grade=Number(document.getElementById('tGrade').value);
+ const subject=document.getElementById('tSubject').value;
+ const title=document.getElementById('tTitle').value.trim();
+ const text=document.getElementById('tText').value.trim();
+ const msg=document.getElementById('teacherMsg');
+ if(!title||!text){msg.className='status';msg.textContent='Mavzu va matnni kiriting.';return;}
+ const steps=document.getElementById('tSteps').value.split('\n').map(x=>x.trim()).filter(Boolean);
+ const lesson={id:'d'+Date.now(),grade,subject,title,text,easy:document.getElementById('tEasy').value.trim()||text,steps,questions:[]};
+ const key=lessonKey(lesson);
+ const existing=data.find(x=>lessonKey(x)===key);
+ if(existing){
+  // Update the existing record instead of creating a duplicate; keep its ID and progress.
+  existing.text=lesson.text;existing.easy=lesson.easy;existing.steps=lesson.steps;
+  if(!existing.questions)existing.questions=[];
+  current=existing;
+  msg.textContent='Bu sinf va fan uchun shu mavzu avval mavjud edi. Dars yangilandi, takroriy nusxa yaratilmadi.';
+ }else{data.push(lesson);current=lesson;msg.textContent='Dars saqlandi. O‘quvchi kabinetida ko‘rish mumkin.';}
+ selectedGrade=grade;
+ studentProfile={...studentProfile,grade};
+ localStorage.setItem('qanotStudentProfile',JSON.stringify(studentProfile));
+ document.getElementById('homeGrade').value=String(grade);
+ document.getElementById('learnerGrade').value=String(grade);
+ store();
+ msg.className='status';
+ renderSaved();renderHomeBooks();renderLesson();
+}
 function renderSaved(){let el=document.getElementById("saved");el.innerHTML="";data.forEach(x=>{let p=document.createElement("p");p.textContent="• "+x.title;el.append(p)})}
 function loadExample(){document.getElementById("tSubject").value=sample.subject;document.getElementById("tTitle").value=sample.title;document.getElementById("tText").value=sample.text;document.getElementById("tEasy").value=sample.easy;document.getElementById("tSteps").value=sample.steps.join("\n")}
 function savePrefs(){let prefs={large:document.getElementById("prefLarge").checked,contrast:document.getElementById("prefContrast").checked,calm:document.getElementById("prefCalm").checked,audio:document.getElementById("prefAudio").checked};localStorage.setItem("qanotPrefs",JSON.stringify(prefs));applyPrefs(prefs);document.getElementById("prefMsg").className="status";document.getElementById("prefMsg").textContent="Qulaylik sozlamalari saqlandi."}
